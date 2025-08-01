@@ -23,7 +23,7 @@ import os, sys, re, json, ssl, argparse
 import http.client
 from urllib.parse import urlsplit
 
-__Version__ = 'v1.6.1 (2025-06-19)'
+__Version__ = 'v1.6.2 (2025-08-01)'
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 CONFIG_JSON = f"{BASE_PATH}/config.json"
 HISTORY_JSON = "history.json" #历史文件会自动跟随程序传入的配置文件路径
@@ -173,10 +173,8 @@ class InkWell:
         if provider not in AI_LIST:
             provider = 'google'
             cfg['provider'] = provider
-        models = [item['name'] for item in AI_LIST[provider]['models']]
-        model = cfg.get('model')
-        if model not in models:
-            cfg['model'] = models[0]
+        if not cfg.get('model'):
+            cfg['model'] = next(item['name'] for item in AI_LIST[provider]['models'])
         if cfg.get("token_limit", 4000) < 1000:
             cfg['token_limit'] = 1000
         displayStyle = cfg.get('display_style')
@@ -1127,6 +1125,7 @@ class InkWell:
 #context: 输入上下文长度，因为程序采用估计法，建议设小一些。注意：一般的AI的输出长度较短，大约4k/8k
 #rpm(requests per minute)是针对免费用户的，如果是付费用户，一般会高很多，可以自己修改
 #大语言模型发展迅速，估计没多久这些数据会全部过时
+#https://docs.anthropic.com/en/docs/about-claude/models/overview
 AI_LIST = {
     'openai': {'host': 'https://api.openai.com', 'models': [
         {'name': 'gpt-4o-mini', 'rpm': 1000, 'context': 128000},
@@ -1151,10 +1150,17 @@ AI_LIST = {
     'anthropic': {'host': 'https://api.anthropic.com', 'models': [
         {'name': 'claude-2', 'rpm': 5, 'context': 100000},
         {'name': 'claude-3', 'rpm': 5, 'context': 200000},
+        {'name': 'claude-opus-4-0', 'rpm': 60, 'context': 200000},
+        {'name': 'claude-sonnet-4-0', 'rpm': 60, 'context': 200000},
+        {'name': 'claude-3-7-sonnet-latest', 'rpm': 60, 'context': 200000},
+        {'name': 'claude-3-5-sonnet-latest', 'rpm': 60, 'context': 200000},
+        {'name': 'claude-3-5-haiku-latest', 'rpm': 60, 'context': 200000},
         {'name': 'claude-2.1', 'rpm': 5, 'context': 100000},],},
     'xai': {'host': 'https://api.x.ai', 'models': [
         {'name': 'grok-1', 'rpm': 60, 'context': 128000},
-        {'name': 'grok-2', 'rpm': 60, 'context': 128000},],},
+        {'name': 'grok-2', 'rpm': 60, 'context': 128000},
+        {'name': 'grok-3', 'rpm': 60, 'context': 128000},
+        {'name': 'grok-4', 'rpm': 60, 'context': 128000},],},
     'mistral': {'host': 'https://api.mistral.ai', 'models': [
         {'name': 'open-mistral-7b', 'rpm': 60, 'context': 32000},
         {'name': 'mistral-small-latest', 'rpm': 60, 'context': 32000},
@@ -1394,12 +1400,12 @@ class SimpleAiProvider:
                 content = item.get('content', '')
                 msg.append(f"\n\n{role}: {content}")
             prompt = ''.join(msg) + "\n\nAssistant:"
-            payload = {"prompt": prompt, "model": self.model, "max_tokens_to_sample": 256}
+            payload = {"prompt": prompt, "model": self.model, "max_tokens_to_sample": 1024}
         elif isinstance(message, dict):
             payload = message
         else:
             prompt = f"\n\nHuman: {message}\n\nAssistant:"
-            payload = {"prompt": prompt, "model": self.model, "max_tokens_to_sample": 256}
+            payload = {"prompt": prompt, "model": self.model, "max_tokens_to_sample": 1024}
         
         data = self._send('v1/complete', headers=headers, payload=payload, method='POST')
         return data["completion"]

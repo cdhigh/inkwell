@@ -6,12 +6,13 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"maps"
+	"slices"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
 	"os"
-	//"os/user"
 	"crypto/tls"
 	"encoding/base64"
 	"flag"
@@ -27,7 +28,7 @@ import (
 
 // 所有常量定义
 const (
-	Version       = "v1.6.1-go (2025-06-19)"
+	Version       = "v1.6.2-go (2025-08-01)"
 	ConfigFile    = "config.json"
 	HistoryFile   = "history.json"
 	PromptsFile   = "prompts.txt"
@@ -114,10 +115,10 @@ type Styled string
 // Error: 错误信息
 // Host: 当前API主机
 type AiResponse struct {
-	Success bool
 	Content string
 	Error   string
 	Host    string
+	Success bool
 }
 
 // 配置文件结构
@@ -126,10 +127,8 @@ type AppConfig struct {
 	Model        string `json:"model"`
 	ApiKey       string `json:"api_key"`
 	ApiHost      string `json:"api_host"`
-	TokenLimit   int    `json:"token_limit"`
 	DisplayStyle string `json:"display_style"`
 	ChatType     string `json:"chat_type"`
-	MaxHistory   int    `json:"max_history"`
 	Prompt       string `json:"prompt"`
 	CustomPrompt string `json:"custom_prompt"`
 	SmtpSender   string `json:"smtp_sender"`
@@ -137,6 +136,8 @@ type AppConfig struct {
 	SmtpUsername string `json:"smtp_username"`
 	SmtpPassword string `json:"smtp_password"`
 	RenewApiKey  string `json:"renew_api_key"`
+	TokenLimit   int    `json:"token_limit"`
+	MaxHistory   int    `json:"max_history"`
 }
 
 // 表示每一条信息
@@ -211,9 +212,14 @@ var AIList = map[string]AiProviderInfo{
 	"anthropic": {
 		Host: "https://api.anthropic.com",
 		Models: []AiModel{
-			{Name: "claude-2", Rpm: 5, Context: 100000},
-			{Name: "claude-3", Rpm: 5, Context: 200000},
-			{Name: "claude-2.1", Rpm: 5, Context: 100000},
+			{Name: "claude-2", Rpm: 60, Context: 100000},
+			{Name: "claude-3", Rpm: 60, Context: 200000},
+			{Name: "claude-opus-4-0", Rpm: 60, Context: 200000},
+			{Name: "claude-sonnet-4-0", Rpm: 60, Context: 200000},
+			{Name: "claude-3-7-sonnet-latest", Rpm: 60, Context: 200000},
+			{Name: "claude-3-5-sonnet-latest", Rpm: 60, Context: 200000},
+			{Name: "claude-3-5-haiku-latest", Rpm: 60, Context: 200000},
+			{Name: "claude-2.1", Rpm: 60, Context: 100000},
 		},
 	},
 	"xai": {
@@ -221,6 +227,8 @@ var AIList = map[string]AiProviderInfo{
 		Models: []AiModel{
 			{Name: "grok-1", Rpm: 60, Context: 128000},
 			{Name: "grok-2", Rpm: 60, Context: 128000},
+			{Name: "grok-3", Rpm: 60, Context: 128000},
+			{Name: "grok-4", Rpm: 60, Context: 128000},
 		},
 	},
 	"mistral": {
@@ -269,15 +277,15 @@ var AIList = map[string]AiProviderInfo{
 // AI服务商实例 结构体
 type SimpleAiProvider struct {
 	Name        string
-	ApiKeys     []string
-	ApiKeyIdx   int
 	Model       string
+	ApiKeys     []string
+	Hosts       []string
+	Client      *http.Client
+	ApiKeyIdx   int
+	HostIdx     int
 	Rpm         int
 	ContextSize int
-	Hosts       []string
-	HostIdx     int
 	SingleTurn  bool
-	Client      *http.Client
 }
 
 // 用来获取终端输入的对象，全局创建，节省资源
@@ -381,14 +389,10 @@ func (iw *InkWell) LoadConfig() bool {
 		info = AIList["google"]
 	}
 
-	modelList := []string{}
-	for _, item := range info.Models {
-		modelList = append(modelList, item.Name)
+	if cfg.Model == "" && len(info.Models) > 0 {
+		cfg.Model = info.Models[0].Name
 	}
-	if len(modelList) > 0 && !contains(modelList, cfg.Model) {
-		cfg.Model = modelList[0]
-	}
-
+	
 	if cfg.TokenLimit < 1000 {
 		cfg.TokenLimit = 1000
 	}
@@ -520,7 +524,7 @@ func (iw *InkWell) ReadClippings() [][2]string {
 // 交互式配置过程
 func (iw *InkWell) Setup() {
 	var cfg AppConfig
-	providers := getMapKeys(AIList)
+	providers := slices.Collect(maps.Keys(AIList))
 	Styled("Start inkwell config. Press q to abort.").Bold().Println()
 	fmt.Println("")
 	Styled(" Providers ").Fg("white").Bg("yellow").Bold().Println()
@@ -2170,7 +2174,7 @@ func (p *SimpleAiProvider) Close() {
 // 简单的处理markdown格式，用于在终端显示粗体斜体等效果
 func (iw *InkWell) MarkdownToTerm(content string) string {
 	// 标题 (# 或 ## 等)，使用粗体
-	content = regexp.MustCompile(`(?m)^(#{1,6})\s+?(.*)$`).ReplaceAllString(content, "\033[1m$2\033[0m")
+	content = regexp.MustCompile(`(?m)^#{1,6}\s+(.*)$`).ReplaceAllString(content, "\033[1m$1\033[0m")
 
 	// 加粗 **bold**
 	content = regexp.MustCompile(`\*\*(.*?)\*\*`).ReplaceAllString(content, "\033[1m$1\033[0m")
@@ -2186,8 +2190,8 @@ func (iw *InkWell) MarkdownToTerm(content string) string {
 	content = regexp.MustCompile(`~~(.*?)~~`).ReplaceAllString(content, "\033[3m$1\033[0m")
 
 	// 列表项或序号加粗
-	content = regexp.MustCompile(`(?m)^( *)(\* |\+ |- |[1-9]+\. )(.*)$`).ReplaceAllString(content, "$1\033[1m$2\033[0m$3")
-
+	content = regexp.MustCompile(`(?m)^(\s*)([*+-] |[1-9]+\. )(.*)$`).ReplaceAllString(content, "$1\033[1m$2\033[0m$3")
+	
 	// 引用行变灰
 	content = regexp.MustCompile(`(?m)^( *>+ .*)$`).ReplaceAllString(content, "\033[90m$1\033[0m")
 
@@ -2297,15 +2301,6 @@ func (iw *InkWell) MdTableToTerm(content string) string {
 	}
 
 	return strings.Join(result, "\n")
-}
-
-// 获取map的键，返回一个切片
-func getMapKeys[K comparable, V any](m map[K]V) []K {
-	keys := make([]K, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
-	}
-	return keys
 }
 
 // 分析命令行参数

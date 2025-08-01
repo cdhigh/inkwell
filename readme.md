@@ -41,11 +41,11 @@ There are two ways to configure Inkwell:
 
 ### Configuration Options  
 - **provider**: AI provider. Supported values: `openai/google/xai/anthropic/mistral/groq/perplexity/alibaba`.  
-- **model**: The model provided by the chosen AI service.  
+- **model**: The model name provided by the chosen AI service.  
 - **api_key**: API keys (multiple keys separated by semicolons).  
-- **api_host**: Third-party API server addresses (separated by semicolons).  
+- **api_host**: Optional, Third-party API server addresses (separated by semicolons).  
 - **display_style**: Text display mode. Options:  
-  - `markdown`: Formatted Markdown text.  
+  - `markdown`: Formatted Markdown text (recommend).  
   - `markdown_table`: Formatted Markdown with table support.  
   - `plaintext`: Plain text.  
 - **chat_type**: Chat session mode.  
@@ -56,7 +56,7 @@ There are two ways to configure Inkwell:
 - **prompt**: System prompt for conversations. Options:  
   - `default/custom`: Special values.  
   - Others refer to names in `prompts.txt`.  
-- **custom_prompt**: Used when `prompt="custom"`.  
+- **custom_prompt**: Optional, used when `prompt="custom"`.  
 - **smtp_sender**: Optional, email sender address.  
 - **smtp_host**: Optional, SMTP server and port (e.g., `smtp.gmail.com:587`).  
 - **smtp_username**: Optional, SMTP username.  
