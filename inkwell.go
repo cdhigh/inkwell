@@ -28,7 +28,7 @@ import (
 
 // 所有常量定义
 const (
-	Version       = "v1.6.2-go (2025-08-01)"
+	Version       = "v1.7-go (2025-09-26)"
 	ConfigFile    = "config.json"
 	HistoryFile   = "history.json"
 	PromptsFile   = "prompts.txt"
@@ -184,15 +184,12 @@ var AIList = map[string]AiProviderInfo{
 	"openai": {
 		Host: "https://api.openai.com",
 		Models: []AiModel{
-			{Name: "gpt-4o-mini", Rpm: 1000, Context: 128000},
-			{Name: "gpt-4o", Rpm: 500, Context: 128000},
-			{Name: "o1", Rpm: 500, Context: 200000},
-			{Name: "o1-mini", Rpm: 500, Context: 200000},
-			{Name: "o1-pro", Rpm: 500, Context: 200000},
-			{Name: "gpt-4.1", Rpm: 500, Context: 1000000},
-			{Name: "o3", Rpm: 500, Context: 200000},
-			{Name: "o3-mini", Rpm: 1000, Context: 200000},
-			{Name: "o4-mini", Rpm: 1000, Context: 200000},
+			{Name: "gpt-5-mini", Rpm: 500, Context: 200000},
+			{Name: "gpt-5", Rpm: 500, Context: 200000},
+			{Name: "gpt-5-nano", Rpm: 500, Context: 200000},
+			{Name: "gpt-4.1", Rpm: 1000, Context: 128000},
+			{Name: "gpt-4.1-mini", Rpm: 500, Context: 128000},
+			{Name: "gpt-4.1-nano", Rpm: 500, Context: 1000000},
 			{Name: "gpt-4-turbo", Rpm: 500, Context: 128000},
 			{Name: "gpt-3.5-turbo", Rpm: 3500, Context: 16000},
 		},
@@ -913,13 +910,11 @@ func (iw *InkWell) ReplayConversation() {
 func (iw *InkWell) GetPromptText() string {
 	name := iw.Config.Prompt
 	var prompt string
-	if iw.Prompts == nil {
-		iw.Prompts = make(map[string]string)
-	}
+	
 	if name == "custom" {
 		prompt = iw.Config.CustomPrompt
 	} else if name != "default" {
-		prompt = iw.Prompts[name]
+		prompt = iw.LoadPrompts()[name]
 	}
 	if prompt == "" {
 		prompt = DefaultPrompt
@@ -1891,7 +1886,7 @@ func (iw *InkWell) SwitchModel() {
 
 // 显示菜单，选择一个会话使用的prompt
 func (iw *InkWell) SwitchPrompt() {
-	iw.LoadPrompts()
+	pmts := iw.LoadPrompts()
 
 	fmt.Println("")
 	Styled(" Current prompt ").Fg("white").Bg("yellow").Println()
@@ -1899,7 +1894,7 @@ func (iw *InkWell) SwitchPrompt() {
 	fmt.Println("")
 	Styled(" Available prompts [add ! to persist] ").Fg("white").Bg("yellow").Println()
 	promptNames := []string{"default", "custom"}
-	for name := range iw.Prompts {
+	for name := range pmts {
 		promptNames = append(promptNames, name)
 	}
 	for idx, item := range promptNames {
@@ -1953,7 +1948,7 @@ func (iw *InkWell) SwitchPrompt() {
 				}
 			} else {
 				iw.PromptName = promptNames[index-1]
-				prompt = iw.Prompts[iw.PromptName]
+				prompt = pmts[iw.PromptName]
 			}
 
 			if prompt != "" {
@@ -2124,26 +2119,30 @@ func (iw *InkWell) PrintAiResponse(resp AiResponse) {
 }
 
 // 加载预置的prompt列表
-func (iw *InkWell) LoadPrompts() {
+func (iw *InkWell) LoadPrompts() map[string]string {
 	if len(iw.Prompts) > 0 {
-		return
+		return iw.Prompts
 	}
 
-	if !fileExists(PromptsFile) {
-		fmt.Printf("Prompts file %s does not exist\n", Styled(PromptsFile).Bg("cyan"))
-		return
+	if iw.Prompts == nil {
+		iw.Prompts = make(map[string]string)
 	}
 
-	content, err := os.ReadFile(PromptsFile)
+	pmtFile := filepath.Join(filepath.Dir(iw.CfgFile), PromptsFile)
+	if !fileExists(pmtFile) {
+		fmt.Printf("Prompts file %s does not exist\n", Styled(pmtFile).Bg("cyan"))
+		return iw.Prompts
+	}
+
+	content, err := os.ReadFile(pmtFile)
 	if err != nil {
-		fmt.Printf("Failed to read %s: %v\n", Styled(PromptsFile).Bg("cyan"), err)
-		return
+		fmt.Printf("Failed to read %s: %v\n", Styled(pmtFile).Bg("cyan"), err)
+		return iw.Prompts
 	}
 	if len(content) == 0 {
-		return
+		return iw.Prompts
 	}
 
-	iw.Prompts = make(map[string]string)
 	entries := strings.Split(string(content), "</>")
 	for _, entry := range entries {
 		entry = strings.TrimSpace(entry)
@@ -2162,6 +2161,7 @@ func (iw *InkWell) LoadPrompts() {
 			iw.Prompts[name] = content
 		}
 	}
+	return iw.Prompts
 }
 
 // 关闭所有连接

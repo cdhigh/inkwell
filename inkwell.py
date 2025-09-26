@@ -23,11 +23,11 @@ import os, sys, re, json, ssl, argparse
 import http.client
 from urllib.parse import urlsplit
 
-__Version__ = 'v1.6.2 (2025-08-01)'
+__Version__ = 'v1.7 (2025-09-26)'
 BASE_PATH = os.path.dirname(os.path.abspath(__file__))
 CONFIG_JSON = f"{BASE_PATH}/config.json"
 HISTORY_JSON = "history.json" #历史文件会自动跟随程序传入的配置文件路径
-PROMPTS_FILE = f"{BASE_PATH}/prompts.txt"
+PROMPTS_FILE = "prompts.txt"
 KINDLE_DOC_DIR = '/mnt/us/documents'
 CLIPPINGS_FILE = os.path.join(KINDLE_DOC_DIR, 'My Clippings.txt')
 if not os.path.isfile(CLIPPINGS_FILE) and os.path.isfile(os.path.join(BASE_PATH, 'My Clippings.txt')):
@@ -195,12 +195,17 @@ class InkWell:
 
     #加载预置的prompt列表
     def loadPrompts(self):
-        if self.prompts or not os.path.isfile(PROMPTS_FILE):
+        if self.prompts:
+            return self.prompts
+
+        pmtPath = os.path.dirname(self.cfgFile)
+        pmtFile = os.path.join(pmtPath, PROMPTS_FILE)
+        if not os.path.isfile(pmtFile):
             return self.prompts
 
         self.prompts = {}
         try:
-            with open(PROMPTS_FILE, 'r', encoding='utf-8') as f:
+            with open(pmtFile, 'r', encoding='utf-8') as f:
                 entries = [entry.partition('\n') for e in f.read().split('</>') if (entry := e.strip())]
                 for name, _, content in entries:
                     name = name.strip()
@@ -208,7 +213,7 @@ class InkWell:
                     if name and content:
                         self.prompts[name] = content
         except Exception as e:
-            print(f'Failed to read {style(PROMPTS_FILE, bold=True)}: {e}')
+            print(f'Failed to read {style(pmtFile, bold=True)}: {e}')
         return self.prompts
 
     #加载历史对话信息，返回历史列表
@@ -582,14 +587,14 @@ class InkWell:
 
     #显示菜单，选择一个会话使用的prompt
     def switchPrompt(self):
-        self.loadPrompts()
+        pmts = self.loadPrompts()
 
         print('')
         sprint(' Current prompt ', fg='white', bg='yellow', bold=True)
         print(self.currPrompt)
         print('')
         sprint(' Available prompts [add ! to persist] ', fg='white', bg='yellow', bold=True)
-        promptNames = ['default', 'custom', *self.prompts.keys()]
+        promptNames = ['default', 'custom', *pmts.keys()]
         print('\n'.join(f'{idx:2d}. {item}' for idx, item in enumerate(promptNames, 1)))
         print('')
         while True:
@@ -620,7 +625,7 @@ class InkWell:
                         self.currPrompt = 'custom'
                 else:
                     self.currPrompt = promptNames[index - 1]
-                    prompt = self.prompts.get(self.currPrompt)
+                    prompt = pmts.get(self.currPrompt)
 
                 if prompt: #消息列表第一项为系统prompt
                     if self.currPrompt == 'custom':
@@ -939,6 +944,7 @@ class InkWell:
         self.client = SimpleAiProvider(provider, apiKey=apiKey, model=model, apiHost=cfg.get('api_host'),
             singleTurn=singleTurn)
         self.history = self.loadHistory()
+        self.loadPrompts()
         self.startNewConversation()
 
         print('Model: {}'.format(style(f'{provider}/{model}', bold=True)))
@@ -1128,15 +1134,12 @@ class InkWell:
 #https://docs.anthropic.com/en/docs/about-claude/models/overview
 AI_LIST = {
     'openai': {'host': 'https://api.openai.com', 'models': [
-        {'name': 'gpt-4o-mini', 'rpm': 1000, 'context': 128000},
-        {'name': 'gpt-4o', 'rpm': 500, 'context': 128000},
-        {'name': 'o1', 'rpm': 500, 'context': 200000},
-        {'name': 'o1-mini', 'rpm': 500, 'context': 200000},
-        {'name': 'o1-pro', 'rpm': 500, 'context': 200000},
-        {'name': 'gpt-4.1', 'rpm': 500, 'context': 1000000},
-        {'name': 'o3', 'rpm': 500, 'context': 200000},
-        {'name': 'o3-mini', 'rpm': 1000, 'context': 200000},
-        {'name': 'o4-mini', 'rpm': 1000, 'context': 200000},
+        {'name': 'gpt-5-mini', 'rpm': 500, 'context': 200000},
+        {'name': 'gpt-5', 'rpm': 500, 'context': 200000},
+        {'name': 'gpt-5-nano', 'rpm': 500, 'context': 200000},
+        {'name': 'gpt-4.1', 'rpm': 500, 'context': 200000},
+        {'name': 'gpt-4.1-mini', 'rpm': 500, 'context': 200000},
+        {'name': 'gpt-4.1-nano', 'rpm': 500, 'context': 1000000},
         {'name': 'gpt-4-turbo', 'rpm': 500, 'context': 128000},
         {'name': 'gpt-3.5-turbo', 'rpm': 3500, 'context': 16000},],},
     'google': {'host': 'https://generativelanguage.googleapis.com', 'models': [
